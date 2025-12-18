@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bible Level-Up: Sorting & Logic</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f4f8; display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; touch-action: manipulation; }
+        #menu, #sort-game, #logic-game { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 100%; position: relative; }
+        h1 { color: #2c3e50; margin-bottom: 10px; }
+        .hidden { display: none !important; }
+        
+        button { padding: 15px 25px; font-size: 1.1rem; margin: 10px; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.1); }
+        .btn-blue { background: #3498db; color: white; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-choice { background: #ecf0f1; border: 2px solid #bdc3c7; min-width: 150px; }
+        
+        /* Sort Game Styles */
+        .bin-container { display: flex; justify-content: space-around; margin-top: 30px; }
+        .bin { width: 45%; height: 120px; border: 4px dashed #bdc3c7; border-radius: 15px; display: flex; align-items: center; justify-content: center; font-weight: bold; background: #f9f9f9; transition: 0.3s; pointer-events: none; }
+        #floating-book { font-size: 1.5rem; font-weight: bold; padding: 15px; background: #f1c40f; border-radius: 10px; margin: 20px auto; width: fit-content; cursor: grab; box-shadow: 0 4px 10px rgba(0,0,0,0.2); position: relative; z-index: 10; touch-action: none; user-select: none; }
+        .bin.active-ot { border-color: #3498db; background: #e8f4fd; transform: scale(1.05); }
+        .bin.active-nt { border-color: #e67e22; background: #fdf5e8; transform: scale(1.05); }
+
+        /* Logic Game Styles */
+        .shelf-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 30px 0; }
+        .book-box { width: 100px; padding: 15px 5px; background: #fff; border: 2px solid #34495e; border-radius: 5px; font-weight: bold; font-size: 0.9rem; height: 60px; display: flex; align-items: center; justify-content: center; }
+        .empty-box { border: 2px dashed #e74c3c; background: #fdf2f2; color: #e74c3c; }
+
+        /* Feedback Overlay */
+        #feedback { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 3rem; font-weight: bold; z-index: 100; pointer-events: none; opacity: 0; transition: 0.3s; }
+    </style>
+</head>
+<body>
+
+    <div id="feedback"></div>
+
+    <div id="menu">
+        <h1>📖 Bible Level-Up</h1>
+        <p>Choose a challenge!</p>
+        <button class="btn-blue" onclick="startSort()">Game 1: Old vs New</button>
+        <button class="btn-green" onclick="startLogic()">Game 2: The Missing Link</button>
+    </div>
+
+    <div id="sort-game" class="hidden">
+        <h2>Is it Old or New?</h2>
+        <div id="floating-book">---</div>
+        <div class="bin-container">
+            <div id="bin-ot" class="bin">Old Testament</div>
+            <div id="bin-nt" class="bin">New Testament</div>
+        </div>
+        <p>Score: <span id="sort-score">0</span></p>
+        <button onclick="goHome()">Back to Menu</button>
+    </div>
+
+    <div id="logic-game" class="hidden">
+        <h2>Fill the Gap</h2>
+        <div class="shelf-row">
+            <div id="logic-prev" class="book-box">Genesis</div>
+            <div id="logic-target" class="book-box empty-box">?</div>
+            <div id="logic-next" class="book-box">Leviticus</div>
+        </div>
+        <div id="logic-options"></div>
+        <p>Streak: <span id="logic-score">0</span></p>
+        <button onclick="goHome()">Back to Menu</button>
+    </div>
+
+    <script>
+        const ot = ["Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Esther", "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon", "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos", "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah", "Malachi"];
+        const nt = ["Matthew", "Mark", "Luke", "John", "Acts", "Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"];
+        const fullBible = [...ot, ...nt];
+
+        let sortScore = 0, logicScore = 0, currentSortBook = "";
+        let audioCtx = null;
+
+        // --- AUDIO ENGINE ---
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playSound(freq, type, dur) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        }
+
+        const sfx = {
+            pop: () => playSound(600, 'sine', 0.1),
+            correct: () => { playSound(523.25, 'triangle', 0.5); setTimeout(() => playSound(659.25, 'triangle', 0.5), 100); },
+            wrong: () => playSound(150, 'square', 0.4)
+        };
+
+        function showFeedback(text, color) {
+            const fb = document.getElementById('feedback');
+            fb.innerText = text;
+            fb.style.color = color;
+            fb.style.opacity = "1";
+            setTimeout(() => fb.style.opacity = "0", 800);
+        }
+
+        function goHome() {
+            document.getElementById('menu').classList.remove('hidden');
+            document.getElementById('sort-game').classList.add('hidden');
+            document.getElementById('logic-game').classList.add('hidden');
+        }
+
+        // --- GAME 1: TOUCH DRAG ---
+        let book = document.getElementById('floating-book');
+        let startX, startY;
+
+        book.addEventListener('touchstart', (e) => {
+            initAudio();
+            sfx.pop();
+            const touch = e.touches[0];
+            startX = touch.clientX - book.offsetLeft;
+            startY = touch.clientY - book.offsetTop;
+        });
+
+        book.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            book.style.position = 'fixed';
+            book.style.left = (touch.clientX - startX) + 'px';
+            book.style.top = (touch.clientY - startY) + 'px';
+
+            // Highlight bins
+            const otBin = document.getElementById('bin-ot').getBoundingClientRect();
+            const ntBin = document.getElementById('bin-nt').getBoundingClientRect();
+            
+            document.getElementById('bin-ot').classList.toggle('active-ot', touch.clientX > otBin.left && touch.clientX < otBin.right && touch.clientY > otBin.top && touch.clientY < otBin.bottom);
+            document.getElementById('bin-nt').classList.toggle('active-nt', touch.clientX > ntBin.left && touch.clientX < ntBin.right && touch.clientY > ntBin.top && touch.clientY < ntBin.bottom);
+        });
+
+        book.addEventListener('touchend', (e) => {
+            const touch = e.changedTouches[0];
+            const otBin = document.getElementById('bin-ot').getBoundingClientRect();
+            const ntBin = document.getElementById('bin-nt').getBoundingClientRect();
+            
+            let droppedIn = null;
+            if (touch.clientX > otBin.left && touch.clientX < otBin.right && touch.clientY > otBin.top && touch.clientY < otBin.bottom) droppedIn = 'OT';
+            if (touch.clientX > ntBin.left && touch.clientX < ntBin.right && touch.clientY > ntBin.top && touch.clientY < ntBin.bottom) droppedIn = 'NT';
+
+            if (droppedIn) handleSort(droppedIn);
+
+            // Reset position
+            book.style.position = 'relative';
+            book.style.left = '0px';
+            book.style.top = '0px';
+            document.getElementById('bin-ot').classList.remove('active-ot');
+            document.getElementById('bin-nt').classList.remove('active-nt');
+        });
+
+        function handleSort(type) {
+            const isOT = ot.includes(currentSortBook);
+            if ((type === 'OT' && isOT) || (type === 'NT' && !isOT)) {
+                sortScore++;
+                sfx.correct();
+                showFeedback("✔", "#27ae60");
+            } else {
+                sfx.wrong();
+                showFeedback("✘", "#e74c3c");
+                alert(`${currentSortBook} belongs in the ${isOT ? 'Old' : 'New'} Testament.`);
+            }
+            document.getElementById('sort-score').innerText = sortScore;
+            nextSortBook();
+        }
+
+        function startSort() {
+            initAudio();
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('sort-game').classList.remove('hidden');
+            nextSortBook();
+        }
+
+        function nextSortBook() {
+            currentSortBook = fullBible[Math.floor(Math.random() * fullBible.length)];
+            document.getElementById('floating-book').innerText = currentSortBook;
+        }
+
+        // --- GAME 2: LOGIC ---
+        function startLogic() {
+            initAudio();
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('logic-game').classList.remove('hidden');
+            nextLogicRound();
+        }
+
+        function nextLogicRound() {
+            let idx = Math.floor(Math.random() * (fullBible.length - 2)) + 1;
+            let prev = fullBible[idx - 1], target = fullBible[idx], next = fullBible[idx + 1];
+
+            document.getElementById('logic-prev').innerText = prev;
+            document.getElementById('logic-next').innerText = next;
+
+            let options = [target];
+            while(options.length < 3) {
+                let r = fullBible[Math.floor(Math.random() * fullBible.length)];
+                if(!options.includes(r)) options.push(r);
+            }
+            options.sort(() => Math.random() - 0.5);
+
+            const optContainer = document.getElementById('logic-options');
+            optContainer.innerHTML = '';
+            options.forEach(opt => {
+                let btn = document.createElement('button');
+                btn.className = 'btn-choice';
+                btn.innerText = opt;
+                btn.onclick = () => {
+                    if(opt === target) {
+                        logicScore++;
+                        sfx.correct();
+                        showFeedback("CORRECT!", "#27ae60");
+                    } else {
+                        logicScore = 0;
+                        sfx.wrong();
+                        showFeedback("OOPS!", "#e74c3c");
+                        alert(`Between ${prev} and ${next} is ${target}.`);
+                    }
+                    document.getElementById('logic-score').innerText = logicScore;
+                    nextLogicRound();
+                };
+                optContainer.appendChild(btn);
+            });
+        }
+    </script>
+</body>
+</html>
